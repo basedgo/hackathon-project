@@ -16,13 +16,17 @@ Hackathon concept: restaurants and grocery stores post closing-time surplus food
    - Exposes endpoints such as `POST /api/listings`, `GET /api/listings/nearby`, and `POST /api/listings/{id}/claim`.
    - This is the easiest AWS path for a hackathon Spring Boot backend because Beanstalk handles EC2 provisioning, load balancing, logs, and app deployment.
 
-3. **Amazon DynamoDB**
-   - Stores surplus listings, shelters, volunteers, claims, and audit events.
-   - Recommended tables:
-     - `FoodListings`: `listingId`, donor details, food description, servings, pickup deadline, status, latitude, longitude.
-     - `Recipients`: shelter or volunteer contact preferences, service radius, capacity, topic ARN.
-     - `Claims`: listing ID, recipient ID, volunteer ID, status timestamps.
-   - Add a TTL attribute to expire old unclaimed listings automatically.
+3. Amazon RDS (PostgreSQL)
+
+Stores surplus listings, shelters, volunteers, claims, and audit events.
+Recommended tables:
+
+   -food_listings: listing_id, donor details, food description, servings, pickup deadline, status, latitude, longitude.
+   -recipients: shelter or volunteer contact preferences, service radius, capacity, topic_arn.
+   -claims: listing_id, recipient_id, volunteer_id, status, timestamps.
+
+   -Use expires_at timestamp column + a scheduled cleanup (via Lambda/EventBridge) to handle expired listings.
+   -Spring Boot connects via JPA/Hibernate — no extra client library needed beyond the PostgreSQL driver.
 
 4. **Amazon SNS**
    - Sends SMS, email, or mobile push alerts to nearby shelters and volunteer groups.
