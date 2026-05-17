@@ -450,6 +450,13 @@ button {
   stroke-dasharray: 2 2;
   stroke-linejoin: round;
   stroke-width: 1.2;
+  marker-end: url("#route-arrow");
+}
+
+.route-arrowhead {
+  fill: #91ad78;
+  marker-end: none;
+  stroke: none;
 }
 
 .map-pin {
@@ -477,7 +484,13 @@ button {
   position: absolute;
   display: grid;
   gap: 3px;
-  min-width: 160px;
+  width: var(--callout-width);
+  max-width: calc(100% - var(--callout-edge-padding) * 2);
+  left: clamp(
+    var(--callout-edge-padding),
+    calc(var(--pin-x) + var(--pin-radius) + var(--callout-gap)),
+    calc(100% - var(--callout-width) - var(--callout-edge-padding))
+  );
   padding: 10px 12px;
   border: 1px solid #dedbd4;
   border-radius: 10px;
@@ -486,6 +499,11 @@ button {
 }
 
 .map-callout.left {
+  left: clamp(
+    calc(var(--callout-width) + var(--callout-edge-padding)),
+    calc(var(--pin-x) - var(--pin-radius) - var(--callout-gap)),
+    calc(100% - var(--callout-edge-padding))
+  );
   transform: translateX(-100%);
 }
 
