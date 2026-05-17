@@ -73,6 +73,7 @@ Globals:
         DATABASE_USERNAME: !Ref DatabaseUsername
         DATABASE_PASSWORD: !Ref DatabasePassword
         SPRING_PROFILES_ACTIVE: !Ref SpringProfilesActive
+        APP_CORS_ALLOWED_ORIGIN: !Ref AllowedCorsOrigin
 
 Resources:
   FoodRescueApiGateway:
