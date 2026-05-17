@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, FormEvent } from "react";
 import { createFoodListingFromUi, getListingsForUi } from "./api/foodRescue";
 import "./App.css";
 
@@ -424,6 +424,9 @@ function ListingsAndMap({
   const safeSelectedListing =
     listings.find((listing) => listing.id === selectedListing?.id) ??
     listings[0];
+  const travelEstimate = safeSelectedListing
+    ? getTravelEstimate(safeSelectedListing)
+    : null;
 
   return (
     <main className="content-grid">
@@ -491,14 +494,46 @@ function ListingsAndMap({
             onSelectListing={onSelectListing}
           />
           <div className="detail-strip">
-            <span>Pickup window: closes in {safeSelectedListing.time}</span>
-            <span>Walk: 8 min</span>
-            <span>Drive: 2 min</span>
+            <span>Pickup window: Closes in {safeSelectedListing.time}</span>
+            {travelEstimate && (
+              <>
+                <span>Walk: {travelEstimate.walkMinutes} min</span>
+                <span>Drive: {travelEstimate.driveMinutes} min</span>
+              </>
+            )}
           </div>
         </aside>
       )}
     </main>
   );
+}
+
+function getTravelEstimate(listing: Listing) {
+  const distanceMiles = parseDistance(listing.distance);
+
+  if (Number.isFinite(distanceMiles) && distanceMiles > 0) {
+    return {
+      walkMinutes: Math.max(1, Math.round(distanceMiles * 20)),
+      driveMinutes: Math.max(1, Math.round(distanceMiles * 4)),
+    };
+  }
+
+  const distanceFromUser = getMapDistance(
+    { x: 54, y: 78 },
+    listing.coordinates,
+  );
+
+  return {
+    walkMinutes: Math.max(1, Math.round(distanceFromUser / 2.4)),
+    driveMinutes: Math.max(1, Math.round(distanceFromUser / 10)),
+  };
+}
+
+function getMapDistance(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+) {
+  return Math.hypot(end.x - start.x, end.y - start.y);
 }
 
 function MapPanel({
@@ -510,23 +545,71 @@ function MapPanel({
   listings: Listing[];
   onSelectListing: (listing: Listing) => void;
 }) {
-  const placeCalloutLeft = selectedListing.coordinates.x > 72;
+  const mapRef = useRef<HTMLDivElement>(null);
+  const [mapWidth, setMapWidth] = useState(0);
+  const userLocation = { x: 54, y: 78 };
+  const calloutWidth = 180;
+  const calloutGap = 14;
+  const calloutEdgePadding = 14;
+  const pinRadius = 27;
+  const selectedX = selectedListing.coordinates.x;
+  const leftSpace = (selectedX / 100) * mapWidth;
+  const rightSpace = ((100 - selectedX) / 100) * mapWidth;
+  const requiredCalloutSpace =
+    pinRadius + calloutGap + calloutWidth + calloutEdgePadding;
+  const rightFits = rightSpace >= requiredCalloutSpace;
+  const leftFits = leftSpace >= requiredCalloutSpace;
+  const placeCalloutLeft = rightFits
+    ? false
+    : leftFits
+      ? true
+      : leftSpace > rightSpace;
+  const routePath = buildRoutePath(userLocation, selectedListing.coordinates);
   const calloutStyle = {
-    left: placeCalloutLeft
-      ? `${selectedListing.coordinates.x - 7}%`
-      : `${selectedListing.coordinates.x + 4}%`,
+    "--pin-x": `${selectedListing.coordinates.x}%`,
+    "--pin-y": `${selectedListing.coordinates.y}%`,
+    "--callout-width": `${calloutWidth}px`,
+    "--callout-gap": `${calloutGap}px`,
+    "--pin-radius": `${pinRadius}px`,
+    "--callout-edge-padding": `${calloutEdgePadding}px`,
     top: `${Math.max(selectedListing.coordinates.y - 7, 6)}%`,
-  };
+  } as CSSProperties;
+
+  useEffect(() => {
+    const mapElement = mapRef.current;
+    if (!mapElement) return;
+
+    const updateMapWidth = () => setMapWidth(mapElement.clientWidth);
+    updateMapWidth();
+
+    const resizeObserver = new ResizeObserver(updateMapWidth);
+    resizeObserver.observe(mapElement);
+
+    return () => resizeObserver.disconnect();
+  }, []);
 
   return (
-    <div className="map-panel">
+    <div className="map-panel" ref={mapRef}>
       <svg
         className="route-svg"
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
         aria-hidden="true"
       >
-        <path d="M18 34 V44 H36 V68 H56 V78" />
+        <defs>
+          <marker
+            id="route-arrow"
+            markerHeight="5"
+            markerWidth="5"
+            orient="auto"
+            refX="4"
+            refY="2.5"
+            viewBox="0 0 5 5"
+          >
+            <path d="M0 0 L5 2.5 L0 5 Z" className="route-arrowhead" />
+          </marker>
+        </defs>
+        <path d={routePath} />
       </svg>
       {listings.map((listing) => (
         <button
@@ -555,6 +638,20 @@ function MapPanel({
       </div>
     </div>
   );
+}
+
+function buildRoutePath(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+) {
+  const midpointY = start.y - Math.max(10, Math.abs(start.y - end.y) / 2);
+
+  return [
+    `M${start.x} ${start.y}`,
+    `V${midpointY}`,
+    `H${end.x}`,
+    `V${end.y}`,
+  ].join(" ");
 }
 
 function CompanyDashboard({ listings }: { listings: Listing[] }) {
