@@ -170,7 +170,14 @@ button {
   background: #eef8ee;
 }
 
-.api-status.offline {
+.api-status.checking {
+  border-color: #ccd2df;
+  color: #3d5d91;
+  background: #f0f5ff;
+}
+
+.api-status.readError,
+.api-status.writeError {
   border-color: #e7c0ad;
   color: #90512f;
   background: #fff3ec;
@@ -715,6 +722,18 @@ button {
   min-height: 88px;
   padding: 12px;
   resize: vertical;
+}
+
+.form-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #e7c0ad;
+  border-radius: 10px;
+  color: #90512f;
+  background: #fff3ec;
+  font-size: 0.92rem;
+  font-weight: 750;
 }
 
 .alert-options {

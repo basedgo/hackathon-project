@@ -2,7 +2,7 @@
 set -euo pipefail
 
 STACK_NAME="${STACK_NAME:-last-mile-food-rescue-public}"
-REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-west-2}}"
+REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-2}}"
 
 command -v aws >/dev/null || { echo "aws CLI is required"; exit 1; }
 command -v sam >/dev/null || { echo "AWS SAM CLI is required"; exit 1; }

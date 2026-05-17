@@ -2,7 +2,7 @@
 set -euo pipefail
 
 STACK_NAME="${STACK_NAME:-last-mile-food-rescue-public}"
-REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-west-2}}"
+REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-2}}"
 API_STAGE_NAME="${API_STAGE_NAME:-prod}"
 
 command -v aws >/dev/null || { echo "aws CLI is required"; exit 1; }
@@ -29,7 +29,7 @@ if [[ "${DEPLOY_DATABASE:-false}" == "true" ]]; then
     "DeployDatabase=true"
     "DatabaseName=${DATABASE_NAME:-food_rescue}"
     "DatabaseUsername=${DATABASE_USERNAME:-food_rescue}"
-    "DatabasePassword=${database_password}"
+    "DatabasePassword=${database_password:-food_rescue}"
     "DatabaseInstanceClass=${DATABASE_INSTANCE_CLASS:-db.t4g.micro}"
     "DatabaseAllocatedStorage=${DATABASE_ALLOCATED_STORAGE:-20}"
     "AllowedCorsOrigin=${ALLOWED_CORS_ORIGIN:-*}"
