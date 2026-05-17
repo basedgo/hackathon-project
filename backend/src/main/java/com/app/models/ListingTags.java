@@ -1,5 +1,6 @@
 package com.app.models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.util.UUID;
 
@@ -13,6 +14,7 @@ public class ListingTags {
     @Id
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "listing_id", nullable = false)
+    @JsonIgnore
     private FoodListings listing;
 
     @Id
@@ -28,6 +30,10 @@ public class ListingTags {
 
     public void setListing(FoodListings listing) {
         this.listing = listing;
+    }
+
+    public UUID getListingId() {
+        return listing == null ? null : listing.getListingId();
     }
 
     public String getTag() {

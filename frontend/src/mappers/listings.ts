@@ -81,7 +81,7 @@ export function mapFoodListingToViewListing(
 
 export function groupTagsByListingId(tags: ListingTag[]) {
   return tags.reduce((grouped, tag) => {
-    const listingId = tag.listing?.listingId;
+    const listingId = tag.listingId ?? tag.listing?.listingId;
     if (!listingId) return grouped;
 
     const existing = grouped.get(listingId) ?? [];

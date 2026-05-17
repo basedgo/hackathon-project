@@ -7,6 +7,7 @@ type Role = "customer" | "company";
 type CustomerView = "listings" | "history" | "profile" | "inbox";
 type CompanyView = "dashboard" | "post" | "listings" | "profile" | "inbox";
 type Filter = "All" | "Meals" | "Bakery" | "Produce" | "Distance";
+type ApiStatus = "checking" | "connected" | "readError" | "writeError";
 
 type Listing = {
   id: string;
@@ -83,7 +84,8 @@ function App() {
   const [searchText, setSearchText] = useState("");
   const [locationText, setLocationText] = useState("Seattle, WA");
   const [postingTitle, setPostingTitle] = useState("");
-  const [apiStatus, setApiStatus] = useState<"connected" | "offline">("offline");
+  const [postingError, setPostingError] = useState("");
+  const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
   const [messages] = useState<Message[]>(initialMessages);
 
   const activeView = role === "customer" ? customerView : companyView;
@@ -107,9 +109,9 @@ function App() {
           );
         }
       } catch (error) {
-        console.error("Unable to load database listings.", error);
+        console.error("Unable to load API listings.", error);
         if (isMounted) {
-          setApiStatus("offline");
+          setApiStatus("readError");
           setCompanyListings([]);
           setSelectedListing(null);
         }
@@ -172,6 +174,7 @@ function App() {
 
   async function submitPosting(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setPostingError("");
 
     try {
       const nextListing = await createFoodListingFromUi(postingTitle);
@@ -181,17 +184,18 @@ function App() {
       setPostingTitle("");
       setCompanyView("listings");
     } catch (error) {
-      console.error("Unable to create database listing.", error);
-      setApiStatus("offline");
+      console.error("Unable to create API listing.", error);
+      setApiStatus("writeError");
+      setPostingError(
+        "Could not save this listing. The API is reachable, but the request failed.",
+      );
     }
   }
 
   return (
     <div className="app-shell">
       <p className={`api-status ${apiStatus}`} role="status">
-        {apiStatus === "connected"
-          ? "API connected"
-          : "API offline — database unavailable"}
+        {getApiStatusLabel(apiStatus)}
       </p>
       <header className="top-nav">
         <div className="brand">
@@ -375,6 +379,7 @@ function App() {
           onSubmit={submitPosting}
           postingTitle={postingTitle}
           setPostingTitle={setPostingTitle}
+          postingError={postingError}
         />
       )}
       {role === "company" && activeView === "listings" && (
@@ -394,6 +399,13 @@ function App() {
       )}
     </div>
   );
+}
+
+function getApiStatusLabel(apiStatus: ApiStatus) {
+  if (apiStatus === "checking") return "Checking API";
+  if (apiStatus === "connected") return "API connected";
+  if (apiStatus === "readError") return "Could not load API data";
+  return "Could not save listing";
 }
 
 function ListingsAndMap({
@@ -627,10 +639,12 @@ function FoodPosting({
   onSubmit,
   postingTitle,
   setPostingTitle,
+  postingError,
 }: {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   postingTitle: string;
   setPostingTitle: (title: string) => void;
+  postingError: string;
 }) {
   return (
     <main className="posting-layout">
@@ -693,6 +707,11 @@ function FoodPosting({
           <input placeholder="Paste a photo URL or connect upload later" />
         </label>
         <button className="submit-button">Post surplus food</button>
+        {postingError && (
+          <p className="form-error" role="alert">
+            {postingError}
+          </p>
+        )}
       </form>
     </main>
   );

@@ -71,6 +71,7 @@ export type FoodListingPayload = Omit<Partial<FoodListing>, 'createdAt' | 'updat
 }
 
 export type ListingTag = {
+  listingId?: UUID | null
   listing?: FoodListing
   tag: string
   tagType: TagType
