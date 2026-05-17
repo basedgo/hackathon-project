@@ -1,0 +1,6 @@
+id,title,restaurant,category,portions,tags,time,timeTone,distance,x,y,pickedUpBy,datePickedUp
+1,Pasta Primavera & Marinara,Green Harvest Co.,Prepared meals,48 portions,Vegan|Gluten,42 min,urgent,0.4 mi,21,34,Mission House Shelter,"May 16, 2026"
+2,Bakery Assortment,Pike St. Bakery,Bakery,30+ items,Gluten|Dairy,1h 20m,soon,0.7 mi,72,31,Northside Community Fridge,"May 15, 2026"
+3,Fresh Salad Bowls,The Garden Table,Produce,22 bowls,GF|Sesame,1h 45m,soon,1.1 mi,45,56,City Food Bank,"May 13, 2026"
+4,Bento Boxes & Rice,Sakura Kitchen,Prepared meals,18 boxes,Soy|Egg,2h 30m,calm,1.4 mi,86,58,Hope Kitchen,"May 10, 2026"
+5,Soup Containers,Demo Deli,Prepared meals,12 bowls,Celery|Wheat,50 min,urgent,0.6 mi,58,45,Awaiting match,Not picked up yet
