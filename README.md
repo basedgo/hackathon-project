@@ -81,3 +81,29 @@ Build check:
 cd frontend
 npm run build
 ```
+
+## Backend Database
+
+The Java backend is configured for PostgreSQL with Flyway migrations. The first migration creates the tables needed by the current frontend:
+
+- `organizations` for donor companies and recipient partners.
+- `app_users` for volunteers and donor admins.
+- `food_listings` plus `listing_tags` for nearby listings, map pins, categories, portions, allergens, and pickup windows.
+- `pickup_claims` for claim status, volunteer history, and pickup logs.
+- `listing_alert_preferences` for the posting form's shelter, driver, and foodbank alerts.
+- `audit_events` for Lambda/EventBridge cleanup and status-change records.
+
+Local defaults expect a database named `food_rescue` with user/password `food_rescue`. Override these for RDS or Lambda with:
+
+```bash
+DATABASE_URL=jdbc:postgresql://<host>:5432/food_rescue
+DATABASE_USERNAME=<username>
+DATABASE_PASSWORD=<password>
+```
+
+Run migrations by starting the backend:
+
+```bash
+cd backend
+mvn spring-boot:run
+```
