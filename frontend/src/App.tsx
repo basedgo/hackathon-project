@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import type { SubmitEvent } from "react";
+import type { FormEvent } from "react";
 import { createFoodListingFromUi, getListingsForUi } from "./api/foodRescue";
 import "./App.css";
 
 type Role = "customer" | "company";
 type CustomerView = "listings" | "history" | "profile" | "inbox";
 type CompanyView = "dashboard" | "post" | "listings" | "profile" | "inbox";
-type Filter = "All" | "Meals" | "Bakery" | "Produce" | "Urgent" | "Distance";
+type Filter = "All" | "Meals" | "Bakery" | "Produce" | "Distance";
 
 type Listing = {
   id: string;
@@ -142,7 +142,6 @@ function App() {
 
       if (!matchesSearch) return false;
       if (activeFilter === "All" || activeFilter === "Distance") return true;
-      if (activeFilter === "Urgent") return listing.timeTone === "urgent";
       if (activeFilter === "Meals")
         return (
           listing.category.toLowerCase().includes("meal") ||
@@ -171,7 +170,7 @@ function App() {
     if (nextRole === "company") setCompanyView("dashboard");
   }
 
-  async function submitPosting(event: SubmitEvent<HTMLFormElement>) {
+  async function submitPosting(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     try {
@@ -334,7 +333,6 @@ function App() {
                 "Meals",
                 "Bakery",
                 "Produce",
-                "Urgent",
                 "Distance",
               ] as Filter[]
             ).map((filter) => (
@@ -630,7 +628,7 @@ function FoodPosting({
   postingTitle,
   setPostingTitle,
 }: {
-  onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   postingTitle: string;
   setPostingTitle: (title: string) => void;
 }) {
@@ -839,6 +837,20 @@ function ProfileSetup({ role }: { role: Role }) {
 }
 
 function Inbox({ role, messages }: { role: Role; messages: Message[] }) {
+  const [selectedMessageId, setSelectedMessageId] = useState(messages[0]?.id);
+  const [readMessageIds, setReadMessageIds] = useState<Set<number>>(
+    () =>
+      new Set(
+        messages
+          .filter((message) => !message.unread)
+          .map((message) => message.id),
+      ),
+  );
+  const [replyTopic, setReplyTopic] = useState(
+    messages[0] ? `Re: ${messages[0].subject}` : "",
+  );
+  const [replyMessage, setReplyMessage] = useState("");
+
   const visibleMessages =
     role === "company"
       ? messages.map((message) => ({
@@ -849,9 +861,27 @@ function Inbox({ role, messages }: { role: Role; messages: Message[] }) {
               : message.from,
         }))
       : messages;
+  const selectedMessage =
+    visibleMessages.find((message) => message.id === selectedMessageId) ??
+    visibleMessages[0];
+
+  function selectMessage(message: Message) {
+    setSelectedMessageId(message.id);
+    setReadMessageIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+      nextIds.add(message.id);
+      return nextIds;
+    });
+    setReplyTopic(`Re: ${message.subject}`);
+  }
+
+  function sendReply(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReplyMessage("");
+  }
 
   return (
-    <main className="inbox-layout simple">
+    <main className="inbox-layout">
       <section className="inbox-card">
         <div className="section-title">
           <span>{role === "company" ? "Company Inbox" : "Customer Inbox"}</span>
@@ -859,9 +889,17 @@ function Inbox({ role, messages }: { role: Role; messages: Message[] }) {
         </div>
         <div className="message-list">
           {visibleMessages.map((message) => (
-            <article
-              className={message.unread ? "message-row unread" : "message-row"}
+            <button
+              className={[
+                "message-row",
+                readMessageIds.has(message.id) ? "read" : "unread",
+                selectedMessage?.id === message.id ? "selected" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
               key={message.id}
+              onClick={() => selectMessage(message)}
+              type="button"
             >
               <div>
                 <strong>{message.from}</strong>
@@ -869,10 +907,38 @@ function Inbox({ role, messages }: { role: Role; messages: Message[] }) {
                 <p>{message.preview}</p>
               </div>
               <time>{message.time}</time>
-            </article>
+            </button>
           ))}
         </div>
       </section>
+
+      <aside className="compose-card">
+        <div className="section-title">
+          <span>Reply</span>
+          <h2>{selectedMessage ? selectedMessage.from : "Select a message"}</h2>
+        </div>
+        <form className="reply-form" onSubmit={sendReply}>
+          <label>
+            Topic
+            <input
+              value={replyTopic}
+              onChange={(event) => setReplyTopic(event.target.value)}
+              placeholder="Reply topic"
+            />
+          </label>
+          <label>
+            Message
+            <textarea
+              value={replyMessage}
+              onChange={(event) => setReplyMessage(event.target.value)}
+              placeholder="Write your reply..."
+            />
+          </label>
+          <button className="submit-button" type="submit">
+            Send
+          </button>
+        </form>
+      </aside>
     </main>
   );
 }
