@@ -454,6 +454,10 @@ button {
   box-shadow: 0 8px 18px rgba(44, 40, 34, 0.08);
 }
 
+.map-callout.left {
+  transform: translateX(-100%);
+}
+
 .map-callout strong {
   color: #4f4b46;
 }

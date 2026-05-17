@@ -350,7 +350,7 @@ function ListingsAndMap({
                   ))}
                   <span>{listing.distance}</span>
                 </div>
-                {safeSelectedListing.id === listing.id && !companyMode && <button className="claim-button">Claim pickup</button>}
+                {safeSelectedListing.id === listing.id && !companyMode && <button className="claim-button">Pickup</button>}
               </article>
             ))}
           </div>
@@ -388,6 +388,12 @@ function MapPanel({
   listings: Listing[]
   onSelectListing: (listing: Listing) => void
 }) {
+  const placeCalloutLeft = selectedListing.coordinates.x > 72
+  const calloutStyle = {
+    left: placeCalloutLeft ? `${selectedListing.coordinates.x - 7}%` : `${selectedListing.coordinates.x + 4}%`,
+    top: `${Math.max(selectedListing.coordinates.y - 7, 6)}%`,
+  }
+
   return (
     <div className="map-panel">
       <svg className="route-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -404,7 +410,7 @@ function MapPanel({
           {listing.title.slice(0, 1)}
         </button>
       ))}
-      <div className="map-callout" style={{ left: `${Math.min(selectedListing.coordinates.x + 4, 72)}%`, top: `${Math.max(selectedListing.coordinates.y - 7, 6)}%` }}>
+      <div className={`map-callout ${placeCalloutLeft ? 'left' : ''}`} style={calloutStyle}>
         <strong>{selectedListing.restaurant}</strong>
         <span>Closes in {selectedListing.time}</span>
       </div>
