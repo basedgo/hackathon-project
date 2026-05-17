@@ -152,6 +152,30 @@ button {
   background: #fffdfa;
 }
 
+.api-status {
+  width: fit-content;
+  margin: 0 auto 12px;
+  padding: 6px 12px;
+  border: 1px solid #d8d4cb;
+  border-radius: 999px;
+  color: #5c5a56;
+  background: #f8f7f3;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.api-status.connected {
+  border-color: #bfd8c1;
+  color: #2f6942;
+  background: #eef8ee;
+}
+
+.api-status.offline {
+  border-color: #e7c0ad;
+  color: #90512f;
+  background: #fff3ec;
+}
+
 .search-card {
   display: grid;
   grid-template-columns: minmax(260px, 1.1fr) minmax(220px, 0.8fr) auto;
