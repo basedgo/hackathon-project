@@ -419,6 +419,7 @@ button {
   stroke-dasharray: 2 2;
   stroke-linejoin: round;
   stroke-width: 1.2;
+  transition: d 180ms ease;
 }
 
 .map-pin {
@@ -447,15 +448,12 @@ button {
   display: grid;
   gap: 3px;
   min-width: 160px;
+  max-width: calc(100% - 24px);
   padding: 10px 12px;
   border: 1px solid #dedbd4;
   border-radius: 10px;
   background: #fff;
   box-shadow: 0 8px 18px rgba(44, 40, 34, 0.08);
-}
-
-.map-callout.left {
-  transform: translateX(-100%);
 }
 
 .map-callout strong {
@@ -856,6 +854,7 @@ button {
 }
 
 .inbox-card,
+.reply-side-panel,
 .compose-card {
   padding: 20px;
   border: 1px solid #dedbd4;
@@ -871,22 +870,42 @@ button {
 
 .message-row {
   display: flex;
+  width: 100%;
   justify-content: space-between;
   gap: 18px;
   padding: 14px;
   border: 1px solid #e6e2db;
   border-radius: 14px;
-  background: #f8f6f0;
+  background: #fff;
+  text-align: left;
 }
 
 .message-row.unread {
-  border-color: #9bb9ff;
-  background: #f3f6ff;
+  border-color: #dedbd4;
+  background: #f1efea;
+}
+
+.message-row.selected {
+  border-color: #2557c8;
+  box-shadow: 0 8px 18px rgba(37, 87, 200, 0.1);
 }
 
 .message-row div {
   display: grid;
   gap: 4px;
+}
+
+.message-title-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d74632;
 }
 
 .message-row strong {
@@ -904,6 +923,77 @@ button {
   flex: 0 0 auto;
   font-size: 0.86rem;
   font-weight: 800;
+}
+
+.reply-side-panel {
+  position: sticky;
+  top: 92px;
+  align-self: start;
+}
+
+.reply-box {
+  display: grid;
+  gap: 14px;
+}
+
+.reply-context {
+  display: grid;
+  gap: 4px;
+}
+
+.reply-context span,
+.reply-empty span {
+  color: #2557c8;
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.reply-context strong,
+.reply-empty strong {
+  color: #33312f;
+  font-size: 1.15rem;
+}
+
+.reply-context p {
+  margin: 0;
+  color: #67625c;
+  font-weight: 800;
+}
+
+.reply-box label {
+  display: grid;
+  gap: 8px;
+  color: #5f5b55;
+  font-weight: 850;
+}
+
+.reply-box textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 12px;
+  border: 1px solid #d8d4cb;
+  border-radius: 10px;
+  color: #33312f;
+  background: #fff;
+  outline: none;
+  resize: vertical;
+}
+
+.reply-box button {
+  justify-self: start;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  background: #2557c8;
+  font-weight: 850;
+}
+
+.reply-empty {
+  display: grid;
+  gap: 8px;
 }
 
 .compose-card {

@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, FormEvent } from 'react'
 import './App.css'
 
 type Role = 'customer' | 'company'
 type CustomerView = 'listings' | 'history' | 'profile' | 'inbox'
 type CompanyView = 'dashboard' | 'post' | 'listings' | 'profile' | 'inbox'
-type Filter = 'All' | 'Meals' | 'Bakery' | 'Produce' | 'Urgent' | 'Distance'
+type Filter = 'All' | 'Meals' | 'Bakery' | 'Produce' | 'Distance'
+
+const listingFilters: Filter[] = ['All', 'Meals', 'Bakery', 'Produce', 'Distance']
+const mapCalloutEdgePadding = 12
+const mapCalloutPinOffset = 36
 
 type Listing = {
   id: number
@@ -170,7 +174,6 @@ function App() {
 
       if (!matchesSearch) return false
       if (activeFilter === 'All' || activeFilter === 'Distance') return true
-      if (activeFilter === 'Urgent') return listing.timeTone === 'urgent'
       if (activeFilter === 'Meals') return listing.category.toLowerCase().includes('meal') || listing.category.toLowerCase().includes('prepared')
       return listing.category.toLowerCase().includes(activeFilter.toLowerCase())
     })
@@ -279,7 +282,7 @@ function App() {
             <button type="button">{role === 'company' ? 'Review' : 'Search'}</button>
           </div>
           <div className="filter-row" aria-label="Listing filters">
-            {(['All', 'Meals', 'Bakery', 'Produce', 'Urgent', 'Distance'] as Filter[]).map((filter) => (
+            {listingFilters.map((filter) => (
               <button className={activeFilter === filter ? 'active' : ''} key={filter} onClick={() => setActiveFilter(filter)} type="button">
                 {filter}
               </button>
@@ -388,16 +391,37 @@ function MapPanel({
   listings: Listing[]
   onSelectListing: (listing: Listing) => void
 }) {
-  const placeCalloutLeft = selectedListing.coordinates.x > 72
-  const calloutStyle = {
-    left: placeCalloutLeft ? `${selectedListing.coordinates.x - 7}%` : `${selectedListing.coordinates.x + 4}%`,
-    top: `${Math.max(selectedListing.coordinates.y - 7, 6)}%`,
-  }
+  const mapRef = useRef<HTMLDivElement>(null)
+  const calloutRef = useRef<HTMLDivElement>(null)
+  const [mapSize, setMapSize] = useState({ width: 0, height: 0 })
+  const [calloutSize, setCalloutSize] = useState({ width: 160, height: 61 })
+  const calloutStyle = getMapCalloutStyle(selectedListing, mapSize, calloutSize)
+  const routePath = getRoutePath(selectedListing.coordinates)
+
+  useEffect(() => {
+    function measureMapCallout() {
+      const mapRect = mapRef.current?.getBoundingClientRect()
+      const calloutRect = calloutRef.current?.getBoundingClientRect()
+
+      if (mapRect) setMapSize({ width: mapRect.width, height: mapRect.height })
+      if (calloutRect) setCalloutSize({ width: calloutRect.width, height: calloutRect.height })
+    }
+
+    measureMapCallout()
+
+    if (!mapRef.current || typeof ResizeObserver === 'undefined') return undefined
+
+    const resizeObserver = new ResizeObserver(measureMapCallout)
+    resizeObserver.observe(mapRef.current)
+    if (calloutRef.current) resizeObserver.observe(calloutRef.current)
+
+    return () => resizeObserver.disconnect()
+  }, [selectedListing.restaurant, selectedListing.time])
 
   return (
-    <div className="map-panel">
+    <div className="map-panel" ref={mapRef}>
       <svg className="route-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M18 34 V44 H36 V68 H56 V78" />
+        <path d={routePath} />
       </svg>
       {listings.map((listing) => (
         <button
@@ -410,7 +434,11 @@ function MapPanel({
           {listing.title.slice(0, 1)}
         </button>
       ))}
-      <div className={`map-callout ${placeCalloutLeft ? 'left' : ''}`} style={calloutStyle}>
+      <div
+        className="map-callout"
+        ref={calloutRef}
+        style={calloutStyle}
+      >
         <strong>{selectedListing.restaurant}</strong>
         <span>Closes in {selectedListing.time}</span>
       </div>
@@ -420,6 +448,59 @@ function MapPanel({
       </div>
     </div>
   )
+}
+
+function getRoutePath(destination: Listing['coordinates']) {
+  const start = { x: 54, y: 78 }
+  const firstTurnY = start.y - Math.max(10, Math.abs(start.y - destination.y) * 0.45)
+  const middleX = start.x + (destination.x - start.x) * 0.5
+
+  return `M${start.x} ${start.y} V${firstTurnY} H${middleX} V${destination.y} H${destination.x}`
+}
+
+function getMapCalloutStyle(
+  selectedListing: Listing,
+  mapSize: { width: number; height: number },
+  calloutSize: { width: number; height: number },
+): CSSProperties {
+  const pinX = (mapSize.width * selectedListing.coordinates.x) / 100
+  const pinY = (mapSize.height * selectedListing.coordinates.y) / 100
+  const targetTop = (mapSize.height * Math.max(selectedListing.coordinates.y - 7, 6)) / 100
+  const rightSideLeft = pinX + mapCalloutPinOffset
+  const leftSideLeft = pinX - mapCalloutPinOffset - calloutSize.width
+  const fitsRight = rightSideLeft + calloutSize.width <= mapSize.width - mapCalloutEdgePadding
+  const fitsLeft = leftSideLeft >= mapCalloutEdgePadding
+  const maxLeft = Math.max(mapCalloutEdgePadding, mapSize.width - calloutSize.width - mapCalloutEdgePadding)
+  const maxTop = Math.max(mapCalloutEdgePadding, mapSize.height - calloutSize.height - mapCalloutEdgePadding)
+
+  if (mapSize.width === 0 || mapSize.height === 0) {
+    return {
+      left: `calc(${selectedListing.coordinates.x}% + ${mapCalloutPinOffset}px)`,
+      top: `${Math.max(selectedListing.coordinates.y - 7, 6)}%`,
+    }
+  }
+
+  if (!fitsRight && !fitsLeft) {
+    const hasRoomAbove = pinY - mapCalloutPinOffset - calloutSize.height >= mapCalloutEdgePadding
+    const desiredTop = hasRoomAbove ? pinY - mapCalloutPinOffset - calloutSize.height : pinY + mapCalloutPinOffset
+
+    return {
+      left: clamp(pinX - calloutSize.width / 2, mapCalloutEdgePadding, maxLeft),
+      top: clamp(desiredTop, mapCalloutEdgePadding, maxTop),
+    }
+  }
+
+  const placeLeft = !fitsRight
+  const desiredLeft = placeLeft ? leftSideLeft : rightSideLeft
+
+  return {
+    left: clamp(desiredLeft, mapCalloutEdgePadding, maxLeft),
+    top: clamp(targetTop, mapCalloutEdgePadding, maxTop),
+  }
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
 }
 
 function CompanyDashboard({ listings }: { listings: Listing[] }) {
@@ -675,30 +756,82 @@ function ProfileSetup({ role }: { role: Role }) {
 }
 
 function Inbox({ role, messages }: { role: Role; messages: Message[] }) {
+  const [selectedMessageId, setSelectedMessageId] = useState<number | null>(null)
+  const [readMessageIds, setReadMessageIds] = useState<Set<number>>(() => new Set(messages.filter((message) => !message.unread).map((message) => message.id)))
+  const [replyText, setReplyText] = useState('')
   const visibleMessages = role === 'company'
     ? messages.map((message) => ({ ...message, from: message.from === 'Green Harvest Co.' ? 'Mission House Shelter' : message.from }))
     : messages
+  const selectedMessage = visibleMessages.find((message) => message.id === selectedMessageId)
+
+  function selectMessage(messageId: number) {
+    setReadMessageIds((currentReadMessageIds) => new Set(currentReadMessageIds).add(messageId))
+    setSelectedMessageId((currentMessageId) => {
+      const nextMessageId = currentMessageId === messageId ? null : messageId
+      if (nextMessageId !== currentMessageId) setReplyText('')
+      return nextMessageId
+    })
+  }
 
   return (
-    <main className="inbox-layout simple">
+    <main className="inbox-layout">
       <section className="inbox-card">
         <div className="section-title">
           <span>{role === 'company' ? 'Company Inbox' : 'Customer Inbox'}</span>
           <h1>Inbox</h1>
         </div>
         <div className="message-list">
-          {visibleMessages.map((message) => (
-            <article className={message.unread ? 'message-row unread' : 'message-row'} key={message.id}>
-              <div>
-                <strong>{message.from}</strong>
-                <span>{message.subject}</span>
-                <p>{message.preview}</p>
-              </div>
-              <time>{message.time}</time>
-            </article>
-          ))}
+          {visibleMessages.map((message) => {
+            const isUnread = Boolean(message.unread && !readMessageIds.has(message.id))
+
+            return (
+              <button
+                aria-controls="reply-panel"
+                aria-expanded={selectedMessageId === message.id}
+                className={`${isUnread ? 'message-row unread' : 'message-row'} ${selectedMessageId === message.id ? 'selected' : ''}`}
+                key={message.id}
+                onClick={() => selectMessage(message.id)}
+                type="button"
+              >
+                <div>
+                  <span className="message-title-line">
+                    {isUnread && <span className="unread-dot" aria-label="Unread message" />}
+                    <strong>{message.from}</strong>
+                  </span>
+                  <span>{message.subject}</span>
+                  <p>{message.preview}</p>
+                </div>
+                <time>{message.time}</time>
+              </button>
+            )
+          })}
         </div>
       </section>
+      <aside className="reply-side-panel" id="reply-panel">
+        {selectedMessage ? (
+          <form className="reply-box">
+            <div className="reply-context">
+              <span>Replying to</span>
+              <strong>{selectedMessage.from}</strong>
+              <p>{selectedMessage.subject}</p>
+            </div>
+            <label>
+              Message
+              <textarea
+                onChange={(event) => setReplyText(event.target.value)}
+                placeholder="Write a reply..."
+                value={replyText}
+              />
+            </label>
+            <button type="button">Send reply</button>
+          </form>
+        ) : (
+          <div className="reply-empty">
+            <strong>Select a message</strong>
+            <span>Choose a conversation to write a reply.</span>
+          </div>
+        )}
+      </aside>
     </main>
   )
 }
