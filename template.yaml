@@ -1,0 +1,294 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Last Mile Food Rescue API on AWS Lambda and API Gateway.
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - W1011
+
+Parameters:
+  SpringProfilesActive:
+    Type: String
+    Description: Spring profile for the Lambda runtime. Use demo for embedded data, or default with DatabaseUrl values for PostgreSQL.
+    Default: demo
+  DeployDatabase:
+    Type: String
+    Description: Create an RDS PostgreSQL database and connect Lambda to it.
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+  DatabaseName:
+    Type: String
+    Description: RDS database name when DeployDatabase is true.
+    Default: food_rescue
+  DatabaseUrl:
+    Type: String
+    Description: JDBC URL for the PostgreSQL database when not using the demo profile.
+    Default: jdbc:postgresql://replace-me:5432/food_rescue
+  DatabaseUsername:
+    Type: String
+    Description: PostgreSQL username when not using the demo profile.
+    Default: food_rescue
+  DatabasePassword:
+    Type: String
+    Description: PostgreSQL password when not using the demo profile.
+    NoEcho: true
+    Default: replace-me
+  AllowedCorsOrigin:
+    Type: String
+    Description: Frontend origin allowed to call the API. Use * for early demos.
+    Default: "*"
+  ApiStageName:
+    Type: String
+    Description: API Gateway deployment stage name.
+    Default: prod
+  DatabaseInstanceClass:
+    Type: String
+    Description: RDS instance class when DeployDatabase is true.
+    Default: db.t4g.micro
+  DatabaseAllocatedStorage:
+    Type: Number
+    Description: RDS allocated storage in GB when DeployDatabase is true.
+    Default: 20
+
+Conditions:
+  CreateDatabase: !Equals [!Ref DeployDatabase, "true"]
+
+Globals:
+  Function:
+    Runtime: java21
+    Architectures:
+      - x86_64
+    MemorySize: 1024
+    Timeout: 30
+    Tracing: Active
+    Environment:
+      Variables:
+        DATABASE_URL: !If
+          - CreateDatabase
+          - !Sub "jdbc:postgresql://${FoodRescueDatabase.Endpoint.Address}:${FoodRescueDatabase.Endpoint.Port}/${DatabaseName}"
+          - !Ref DatabaseUrl
+        DATABASE_USERNAME: !Ref DatabaseUsername
+        DATABASE_PASSWORD: !Ref DatabasePassword
+        SPRING_PROFILES_ACTIVE: !Ref SpringProfilesActive
+
+Resources:
+  FoodRescueApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: last-mile-food-rescue-api
+      StageName: !Ref ApiStageName
+      EndpointConfiguration: REGIONAL
+      TracingEnabled: true
+      Cors:
+        AllowOrigin: !Sub "'${AllowedCorsOrigin}'"
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+
+  FoodRescueApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: backend/
+      Handler: com.app.LambdaHandler::handleRequest
+      VpcConfig: !If
+        - CreateDatabase
+        - SecurityGroupIds:
+            - !Ref LambdaSecurityGroup
+          SubnetIds:
+            - !Ref AppPrivateSubnetA
+            - !Ref AppPrivateSubnetB
+        - !Ref AWS::NoValue
+      Events:
+        ApiRoot:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FoodRescueApiGateway
+            Path: /api
+            Method: ANY
+        ApiProxy:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FoodRescueApiGateway
+            Path: /api/{proxy+}
+            Method: ANY
+
+  AppVpc:
+    Type: AWS::EC2::VPC
+    Condition: CreateDatabase
+    Properties:
+      CidrBlock: 10.42.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-vpc"
+
+  AppPrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Condition: CreateDatabase
+    Properties:
+      VpcId: !Ref AppVpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: 10.42.1.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-private-a"
+
+  AppPrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Condition: CreateDatabase
+    Properties:
+      VpcId: !Ref AppVpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: 10.42.2.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-private-b"
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateDatabase
+    Properties:
+      GroupDescription: Lambda access to the food rescue database.
+      VpcId: !Ref AppVpc
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateDatabase
+    Properties:
+      GroupDescription: PostgreSQL access from the food rescue Lambda.
+      VpcId: !Ref AppVpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Condition: CreateDatabase
+    Properties:
+      DBSubnetGroupDescription: Private subnets for the food rescue database.
+      SubnetIds:
+        - !Ref AppPrivateSubnetA
+        - !Ref AppPrivateSubnetB
+
+  FoodRescueDatabase:
+    Type: AWS::RDS::DBInstance
+    Condition: CreateDatabase
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBInstanceIdentifier: !Sub "${AWS::StackName}-postgres"
+      DBName: !Ref DatabaseName
+      Engine: postgres
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      AllocatedStorage: !Ref DatabaseAllocatedStorage
+      StorageType: gp3
+      MasterUsername: !Ref DatabaseUsername
+      MasterUserPassword: !Ref DatabasePassword
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DatabaseSecurityGroup
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 1
+      DeletionProtection: false
+      MultiAZ: false
+      StorageEncrypted: true
+
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+  FrontendOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-frontend-oac"
+        Description: Access control for the Last Mile Food Rescue frontend bucket.
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  FrontendDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "${AWS::StackName} frontend"
+        DefaultRootObject: index.html
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: FrontendS3Origin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt FrontendOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: FrontendS3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${FrontendDistribution}"
+
+Outputs:
+  ApiGatewayId:
+    Description: API Gateway REST API ID.
+    Value: !Ref FoodRescueApiGateway
+  ApiBaseUrl:
+    Description: Base URL for VITE_API_BASE_URL.
+    Value: !Sub "https://${FoodRescueApiGateway}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${ApiStageName}/api"
+  FrontendBucketName:
+    Description: S3 bucket that stores the built frontend assets.
+    Value: !Ref FrontendBucket
+  FrontendDistributionId:
+    Description: CloudFront distribution ID for cache invalidations.
+    Value: !Ref FrontendDistribution
+  FrontendUrl:
+    Description: Public HTTPS URL for the frontend.
+    Value: !Sub "https://${FrontendDistribution.DomainName}"
+  DatabaseEndpoint:
+    Condition: CreateDatabase
+    Description: RDS PostgreSQL endpoint.
+    Value: !GetAtt FoodRescueDatabase.Endpoint.Address

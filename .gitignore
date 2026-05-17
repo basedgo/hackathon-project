@@ -15,6 +15,7 @@ dist-ssr
 # Java / Maven
 target/
 backend/target/
+.aws-sam/
 
 # Local environment
 .env

@@ -1,73 +1,95 @@
 # Last Mile Food Rescue
 
-Hackathon concept: restaurants and grocery stores post closing-time surplus food with a one-hour pickup window. Nearby shelters and volunteers receive a real-time alert, claim the pickup, and move the food before it becomes waste.
+Last Mile Food Rescue is a hackathon project for coordinating closing-time surplus food pickup. Restaurants can post available food with a short pickup window, while shelters, food banks, and volunteers can find nearby listings, claim pickups, and track delivery activity.
 
-## AWS Service Architecture
+The app is split into a React frontend and a Spring Boot backend backed by PostgreSQL. The frontend focuses on the donor, recipient, and volunteer workflow. The backend owns listings, organizations, users, pickup claims, alert preferences, tags, and audit events.
 
-### Core Request Flow
+## Project Structure
 
-1. **React frontend on AWS Amplify Hosting**
-   - Hosts the donor, shelter, and volunteer web app.
-   - Calls the Spring Boot API over HTTPS.
-   - Keeps the demo simple while still showing a deployable cloud frontend.
+```text
+.
+├── frontend/                 # React + Vite app
+├── backend/                  # Java Spring Boot API
+├── template.yaml             # Early AWS SAM Lambda/API Gateway deployment config
+└── README.md
+```
 
-2. **Java Spring Boot API on AWS Elastic Beanstalk**
-   - Owns listing creation, recipient matching, claim status, and volunteer assignment.
-   - Exposes endpoints such as `POST /api/listings`, `GET /api/listings/nearby`, and `POST /api/listings/{id}/claim`.
-   - This is the easiest AWS path for a hackathon Spring Boot backend because Beanstalk handles EC2 provisioning, load balancing, logs, and app deployment.
+## Tech Stack
 
-3. Amazon RDS (PostgreSQL)
+- React 19, TypeScript, and Vite
+- Java 21 and Spring Boot 3
+- PostgreSQL
+- Flyway database migrations
+- Maven
 
-Stores surplus listings, shelters, volunteers, claims, and audit events.
-Recommended tables:
+## Prerequisites
 
-   -food_listings: listing_id, donor details, food description, servings, pickup deadline, status, latitude, longitude.
-   -recipients: shelter or volunteer contact preferences, service radius, capacity, topic_arn.
-   -claims: listing_id, recipient_id, volunteer_id, status, timestamps.
+Install these before running the project locally:
 
-   -Use expires_at timestamp column + a scheduled cleanup (via Lambda/EventBridge) to handle expired listings.
-   -Spring Boot connects via JPA/Hibernate — no extra client library needed beyond the PostgreSQL driver.
+- Node.js and npm
+- Java 21
+- Maven
+- PostgreSQL
 
-4. **Amazon SNS**
-   - Sends SMS, email, or mobile push alerts to nearby shelters and volunteer groups.
-   - Topic strategy for the demo:
-     - `food-rescue-zip-94103`
-     - `food-rescue-zip-94107`
-     - `food-rescue-shelters`
-   - Spring Boot publishes a message after a listing is created or a claim changes.
+On macOS, PostgreSQL can be installed with Homebrew:
 
-5. **AWS Lambda plus Amazon EventBridge**
-   - EventBridge runs a scheduled rule every few minutes.
-   - Lambda expires listings whose pickup window has passed, publishes final SNS updates, and writes audit records.
-   - Keeps time-sensitive cleanup out of the Spring Boot request path.
+```bash
+brew install postgresql@16
+brew services start postgresql@16
+```
 
-6. **Amazon S3**
-   - Stores optional proof-of-pickup photos, donor receipts, and generated impact exports.
-   - For a hackathon demo, S3 can also hold static sample data or CSV reports.
+## Backend Setup
 
-7. **Amazon CloudWatch**
-   - Centralizes Spring Boot logs, Lambda logs, SNS publish metrics, and demo dashboards.
-   - Track `ListingsCreated`, `AlertsSent`, `ClaimsConfirmed`, and `ServingsRescued`.
+Create the local database and user expected by the default Spring configuration:
 
-### Minimum AWS Services For The Track
+```bash
+createdb food_rescue
+createuser food_rescue
+psql -d food_rescue
+```
 
-Use these at minimum in the judged demo:
+Inside `psql`, run:
 
-- **Amazon SNS** for real-time gratitude-and-impact alerts.
-- **Amazon DynamoDB** for live surplus food, recipient, and claim data.
+```sql
+alter user food_rescue with password 'food_rescue';
+grant all privileges on database food_rescue to food_rescue;
+grant all on schema public to food_rescue;
+\q
+```
 
-Stronger track-specific version:
+Start the backend:
 
-- **AWS Elastic Beanstalk** for Spring Boot API deployment.
-- **Amazon SNS** for alert fan-out.
-- **Amazon DynamoDB** for operational data.
-- **AWS Lambda/EventBridge** for pickup-window expiry.
+```bash
+cd backend
+mvn spring-boot:run
+```
 
-### Why This Aligns With The Theme
+The API runs on `http://localhost:8080`. Flyway runs automatically on startup and applies migrations from:
 
-The gratitude angle is concrete: the app turns appreciation for being fed into a repeatable logistics loop. Donors see exactly where surplus meals went, shelters get timely food instead of cold outreach, and volunteers receive one clear action when they can help.
+```text
+backend/src/main/resources/db/migration
+```
 
-## Frontend
+The backend uses these local defaults:
+
+```properties
+DATABASE_URL=jdbc:postgresql://localhost:5432/food_rescue
+DATABASE_USERNAME=food_rescue
+DATABASE_PASSWORD=food_rescue
+```
+
+To use a different database, pass environment variables when starting the backend:
+
+```bash
+DATABASE_URL=jdbc:postgresql://<host>:5432/food_rescue \
+DATABASE_USERNAME=<username> \
+DATABASE_PASSWORD=<password> \
+mvn spring-boot:run
+```
+
+## Frontend Setup
+
+Install dependencies and start the Vite dev server:
 
 ```bash
 cd frontend
@@ -75,35 +97,134 @@ npm install
 npm run dev
 ```
 
-Build check:
+The frontend runs on the URL printed by Vite, usually `http://localhost:5173`.
+
+During local development, Vite proxies `/api` requests to the backend at `http://localhost:8080`, so the normal local setup is:
+
+1. Start PostgreSQL.
+2. Start the backend from `backend/`.
+3. Start the frontend from `frontend/`.
+
+If the API is hosted somewhere else, set:
+
+```bash
+VITE_API_BASE_URL=https://example.com/api npm run dev
+```
+
+## Useful Commands
+
+Frontend:
 
 ```bash
 cd frontend
+npm run dev
 npm run build
+npm run lint
 ```
 
-## Backend Database
-
-The Java backend is configured for PostgreSQL with Flyway migrations. The first migration creates the tables needed by the current frontend:
-
-- `organizations` for donor companies and recipient partners.
-- `app_users` for volunteers and donor admins.
-- `food_listings` plus `listing_tags` for nearby listings, map pins, categories, portions, allergens, and pickup windows.
-- `pickup_claims` for claim status, volunteer history, and pickup logs.
-- `listing_alert_preferences` for the posting form's shelter, driver, and foodbank alerts.
-- `audit_events` for Lambda/EventBridge cleanup and status-change records.
-
-Local defaults expect a database named `food_rescue` with user/password `food_rescue`. Override these for RDS or Lambda with:
-
-```bash
-DATABASE_URL=jdbc:postgresql://<host>:5432/food_rescue
-DATABASE_USERNAME=<username>
-DATABASE_PASSWORD=<password>
-```
-
-Run migrations by starting the backend:
+Backend:
 
 ```bash
 cd backend
 mvn spring-boot:run
+mvn test
+mvn clean package
 ```
+
+## Database Notes
+
+The first Flyway migration creates and seeds the core local tables:
+
+- `organizations`
+- `app_users`
+- `food_listings`
+- `pickup_claims`
+- `listing_alert_preferences`
+- `listing_tags`
+- `audit_events`
+
+To inspect local data:
+
+```bash
+psql -U food_rescue -d food_rescue
+```
+
+Example checks:
+
+```sql
+\dt
+
+select title, category, quantity_label, status
+from food_listings
+order by created_at desc;
+```
+
+For a deeper database walkthrough, see `backend/TESTING_DATABASE.md`.
+
+## Deployment Notes
+
+The repo includes a public demo deployment path using AWS SAM:
+
+- Spring Boot API on AWS Lambda behind API Gateway.
+- React frontend in a private S3 bucket served through CloudFront.
+- Demo data in an embedded H2 database so deployment does not require RDS.
+
+Prerequisites:
+
+- AWS CLI configured with credentials.
+- AWS SAM CLI installed.
+- Java, Maven, Node.js, and npm installed locally.
+
+Deploy:
+
+```bash
+./scripts/deploy-public.sh
+```
+
+The script deploys the AWS stack, reads the API Gateway URL, builds the frontend with `VITE_API_BASE_URL`, uploads `frontend/dist` to S3, and invalidates CloudFront. It prints the public frontend URL when it finishes.
+
+The default stack name is `last-mile-food-rescue-public`. Override it if needed:
+
+```bash
+STACK_NAME=my-food-rescue-demo ./scripts/deploy-public.sh
+```
+
+Deploy with RDS PostgreSQL:
+
+```bash
+DEPLOY_DATABASE=true ./scripts/deploy-public.sh
+```
+
+That creates a private RDS PostgreSQL instance, a VPC with two private subnets, security groups that allow Lambda to reach PostgreSQL, and Lambda VPC configuration. Flyway applies the PostgreSQL migrations the first time the API starts.
+
+Optional RDS settings:
+
+```bash
+DEPLOY_DATABASE=true \
+DATABASE_NAME=food_rescue \
+DATABASE_USERNAME=food_rescue \
+DATABASE_PASSWORD=<strong-password> \
+DATABASE_INSTANCE_CLASS=db.t4g.micro \
+DATABASE_ALLOCATED_STORAGE=20 \
+./scripts/deploy-public.sh
+```
+
+Undeploy:
+
+```bash
+./scripts/delete-public.sh
+```
+
+This empties the frontend bucket and deletes the SAM/CloudFormation stack. If the stack created RDS, the database is deleted too.
+
+To use an existing PostgreSQL database instead of creating RDS in this stack, pass database environment variables:
+
+```bash
+DATABASE_URL=jdbc:postgresql://<host>:5432/food_rescue \
+DATABASE_USERNAME=<username> \
+DATABASE_PASSWORD=<password> \
+SPRING_PROFILES_ACTIVE=default \
+./scripts/deploy-public.sh
+```
+
+If the database is private in a VPC, add Lambda VPC configuration to `template.yaml` before deploying.
