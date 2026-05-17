@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { SubmitEvent } from "react";
+import { createFoodListingFromUi, getListingsForUi } from "./api/foodRescue";
 import "./App.css";
 
 type Role = "customer" | "company";
@@ -8,7 +9,7 @@ type CompanyView = "dashboard" | "post" | "listings" | "profile" | "inbox";
 type Filter = "All" | "Meals" | "Bakery" | "Produce" | "Urgent" | "Distance";
 
 type Listing = {
-  id: number;
+  id: string;
   title: string;
   restaurant: string;
   category: string;
@@ -30,65 +31,6 @@ type Message = {
   time: string;
   unread?: boolean;
 };
-
-const fallbackListings: Listing[] = [
-  {
-    id: 1,
-    title: "Pasta Primavera & Marinara",
-    restaurant: "Green Harvest Co.",
-    category: "Prepared meals",
-    portions: "48 portions",
-    tags: ["Vegan", "Gluten"],
-    time: "42 min",
-    timeTone: "urgent",
-    distance: "0.4 mi",
-    coordinates: { x: 21, y: 34 },
-    pickedUpBy: "Mission House Shelter",
-    datePickedUp: "May 16, 2026",
-  },
-  {
-    id: 2,
-    title: "Bakery Assortment",
-    restaurant: "Pike St. Bakery",
-    category: "Bakery",
-    portions: "30+ items",
-    tags: ["Gluten", "Dairy"],
-    time: "1h 20m",
-    timeTone: "soon",
-    distance: "0.7 mi",
-    coordinates: { x: 72, y: 31 },
-    pickedUpBy: "Northside Community Fridge",
-    datePickedUp: "May 15, 2026",
-  },
-  {
-    id: 3,
-    title: "Fresh Salad Bowls",
-    restaurant: "The Garden Table",
-    category: "Produce",
-    portions: "22 bowls",
-    tags: ["GF", "Sesame"],
-    time: "1h 45m",
-    timeTone: "soon",
-    distance: "1.1 mi",
-    coordinates: { x: 45, y: 56 },
-    pickedUpBy: "City Food Bank",
-    datePickedUp: "May 13, 2026",
-  },
-  {
-    id: 4,
-    title: "Bento Boxes & Rice",
-    restaurant: "Sakura Kitchen",
-    category: "Prepared meals",
-    portions: "18 boxes",
-    tags: ["Soy", "Egg"],
-    time: "2h 30m",
-    timeTone: "calm",
-    distance: "1.4 mi",
-    coordinates: { x: 86, y: 58 },
-    pickedUpBy: "Hope Kitchen",
-    datePickedUp: "May 10, 2026",
-  },
-];
 
 const monthlyDonations = [
   { label: "Jan", value: 18 },
@@ -135,15 +77,13 @@ function App() {
   const [role, setRole] = useState<Role>("customer");
   const [customerView, setCustomerView] = useState<CustomerView>("listings");
   const [companyView, setCompanyView] = useState<CompanyView>("dashboard");
-  const [selectedListing, setSelectedListing] = useState<Listing>(
-    fallbackListings[0],
-  );
-  const [companyListings, setCompanyListings] =
-    useState<Listing[]>(fallbackListings);
+  const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
+  const [companyListings, setCompanyListings] = useState<Listing[]>([]);
   const [activeFilter, setActiveFilter] = useState<Filter>("All");
   const [searchText, setSearchText] = useState("");
   const [locationText, setLocationText] = useState("Seattle, WA");
   const [postingTitle, setPostingTitle] = useState("");
+  const [apiStatus, setApiStatus] = useState<"connected" | "offline">("offline");
   const [messages] = useState<Message[]>(initialMessages);
 
   const activeView = role === "customer" ? customerView : companyView;
@@ -153,34 +93,33 @@ function App() {
 
     async function loadListings() {
       try {
-        const response = await fetch(`/listings.csv?updated=${Date.now()}`, {
-          cache: "no-store",
-        });
-        if (!response.ok) throw new Error("CSV file could not be loaded");
-
-        const csvListings = parseListingsCsv(await response.text());
-        if (isMounted && csvListings.length > 0) {
-          setCompanyListings(csvListings);
+        const databaseListings = await getListingsForUi();
+        if (isMounted) {
+          setApiStatus("connected");
+          setCompanyListings(databaseListings);
           setSelectedListing(
             (currentListing) =>
-              csvListings.find((listing) => listing.id === currentListing.id) ??
-              csvListings[0],
+              databaseListings.find(
+                (listing) => listing.id === currentListing?.id,
+              ) ??
+              databaseListings[0] ??
+              null,
           );
         }
       } catch (error) {
-        console.warn(
-          "Using fallback listings because CSV loading failed:",
-          error,
-        );
+        console.error("Unable to load database listings.", error);
+        if (isMounted) {
+          setApiStatus("offline");
+          setCompanyListings([]);
+          setSelectedListing(null);
+        }
       }
     }
 
     loadListings();
-    const intervalId = window.setInterval(loadListings, 5000);
 
     return () => {
       isMounted = false;
-      window.clearInterval(intervalId);
     };
   }, []);
 
@@ -224,15 +163,6 @@ function App() {
     return visibleListings;
   }, [activeFilter, companyListings, searchText]);
 
-  useEffect(() => {
-    if (
-      filteredListings.length > 0 &&
-      !filteredListings.some((listing) => listing.id === selectedListing.id)
-    ) {
-      setSelectedListing(filteredListings[0]);
-    }
-  }, [filteredListings, selectedListing.id]);
-
   function switchRole(nextRole: Role) {
     setRole(nextRole);
     setActiveFilter("All");
@@ -243,41 +173,27 @@ function App() {
 
   async function submitPosting(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    let nextListing: Listing;
 
     try {
-      nextListing = await createFoodListingFromUi(postingTitle);
+      const nextListing = await createFoodListingFromUi(postingTitle);
       setApiStatus("connected");
+      setCompanyListings((currentListings) => [nextListing, ...currentListings]);
+      setSelectedListing(nextListing);
+      setPostingTitle("");
+      setCompanyView("listings");
     } catch (error) {
-      console.error(
-        "Unable to create backend listing, adding local fallback listing.",
-        error,
-      );
+      console.error("Unable to create database listing.", error);
       setApiStatus("offline");
-      nextListing = {
-        id: `local-${Date.now()}`,
-        title: postingTitle || "Fresh surplus pickup",
-        restaurant: "Your Restaurant",
-        category: "Prepared meals",
-        portions: "24 portions",
-        tags: ["Contains dairy", "Packed hot"],
-        time: "1h 15m",
-        timeTone: "soon",
-        distance: "0.2 mi",
-        coordinates: { x: 34, y: 42 },
-        pickedUpBy: "Awaiting match",
-        datePickedUp: "Not picked up yet",
-      };
     }
-
-    setCompanyListings([nextListing, ...companyListings]);
-    setSelectedListing(nextListing);
-    setPostingTitle("");
-    setCompanyView("listings");
   }
 
   return (
     <div className="app-shell">
+      <p className={`api-status ${apiStatus}`} role="status">
+        {apiStatus === "connected"
+          ? "API connected"
+          : "API offline — database unavailable"}
+      </p>
       <header className="top-nav">
         <div className="brand">
           <span className="brand-mark">
@@ -490,13 +406,13 @@ function ListingsAndMap({
   companyMode = false,
 }: {
   listings: Listing[];
-  selectedListing: Listing;
+  selectedListing: Listing | null;
   onSelectListing: (listing: Listing) => void;
   activeFilter: Filter;
   companyMode?: boolean;
 }) {
   const safeSelectedListing =
-    listings.find((listing) => listing.id === selectedListing.id) ??
+    listings.find((listing) => listing.id === selectedListing?.id) ??
     listings[0];
 
   return (
@@ -988,81 +904,6 @@ function HistoryView({ listings }: { listings: Listing[] }) {
       </section>
     </main>
   );
-}
-
-function parseListingsCsv(csvText: string): Listing[] {
-  const [headerLine, ...dataLines] = csvText.trim().split(/\r?\n/);
-  if (!headerLine) return [];
-
-  const headers = splitCsvLine(headerLine);
-
-  return dataLines
-    .filter((line) => line.trim().length > 0)
-    .map((line, index) => {
-      const values = splitCsvLine(line);
-      const row = headers.reduce<Record<string, string>>(
-        (currentRow, header, headerIndex) => {
-          currentRow[header] = values[headerIndex] ?? "";
-          return currentRow;
-        },
-        {},
-      );
-      const timeTone =
-        row.timeTone === "urgent" ||
-        row.timeTone === "soon" ||
-        row.timeTone === "calm"
-          ? row.timeTone
-          : "soon";
-
-      return {
-        id: Number(row.id) || index + 1,
-        title: row.title || "Untitled surplus food",
-        restaurant: row.restaurant || "Unknown restaurant",
-        category: row.category || "Prepared meals",
-        portions: row.portions || "Quantity not listed",
-        tags: row.tags
-          ? row.tags
-              .split("|")
-              .map((tag) => tag.trim())
-              .filter(Boolean)
-          : [],
-        time: row.time || "1h",
-        timeTone,
-        distance: row.distance || "0.0 mi",
-        coordinates: {
-          x: Number(row.x) || 50,
-          y: Number(row.y) || 50,
-        },
-        pickedUpBy: row.pickedUpBy || "Awaiting match",
-        datePickedUp: row.datePickedUp || "Not picked up yet",
-      };
-    });
-}
-
-function splitCsvLine(line: string) {
-  const values: string[] = [];
-  let currentValue = "";
-  let insideQuotes = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index];
-    const nextCharacter = line[index + 1];
-
-    if (character === '"' && nextCharacter === '"') {
-      currentValue += '"';
-      index += 1;
-    } else if (character === '"') {
-      insideQuotes = !insideQuotes;
-    } else if (character === "," && !insideQuotes) {
-      values.push(currentValue.trim());
-      currentValue = "";
-    } else {
-      currentValue += character;
-    }
-  }
-
-  values.push(currentValue.trim());
-  return values;
 }
 
 function parseDistance(distance: string) {
